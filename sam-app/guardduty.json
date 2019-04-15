@@ -1,0 +1,110 @@
+{
+    "version": "0",
+    "id": "531a7d92-70d6-d3be-9ab0-c77d1c523ff9",
+    "detail-type": "GuardDuty Finding",
+    "source": "aws.guardduty",
+    "account": "00000000000",
+    "time": "2019-04-15T12:00:07Z",
+    "region": "ap-southeast-2",
+    "resources": [],
+    "detail": {
+        "schemaVersion": "2.0",
+        "accountId": "00000000000",
+        "region": "ap-southeast-2",
+        "partition": "aws",
+        "id": "34b507de5b20e443b58b96c745235c28",
+        "arn": "arn:aws:guardduty:ap-southeast-2:00000000000:detector/e4b507ba783f3900a2a19712a9f61b8d/finding/34b507de5b20e443b58b96c745235c28",
+        "type": "Recon:EC2/PortProbeUnprotectedPort",
+        "resource": {
+            "resourceType": "Instance",
+            "instanceDetails": {
+                "instanceId": "i-000000000000",
+                "instanceType": "t2.micro",
+                "launchTime": "2019-04-12T01:47:19Z",
+                "platform": null,
+                "productCodes": [],
+                "iamInstanceProfile": null,
+                "networkInterfaces": [
+                    {
+                        "ipv6Addresses": [],
+                        "networkInterfaceId": "eni-00000000",
+                        "privateDnsName": "ip-172-31-6-116.ap-southeast-2.compute.internal",
+                        "privateIpAddress": "172.31.6.116",
+                        "privateIpAddresses": [
+                            {
+                                "privateDnsName": "ip-172-31-6-116.ap-southeast-2.compute.internal",
+                                "privateIpAddress": "172.31.6.116"
+                            }
+                        ],
+                        "subnetId": "000000000",
+                        "vpcId": "00000000",
+                        "securityGroups": [
+                            {
+                                "groupName": "launch-wizard-1",
+                                "groupId": "0000000000"
+                            }
+                        ],
+                        "publicDnsName": "0000000000000.ap-southeast-2.compute.amazonaws.com",
+                        "publicIp": "0000000000000"
+                    }
+                ],
+                "tags": [],
+                "instanceState": "running",
+                "availabilityZone": "ap-southeast-2a",
+                "imageId": "00000000001",
+                "imageDescription": "Amazon Linux AMI 2018.03.0.20180622 x86_64 HVM GP2"
+            }
+        },
+        "service": {
+            "serviceName": "guardduty",
+            "detectorId": "000000000000",
+            "action": {
+                "actionType": "PORT_PROBE",
+                "portProbeAction": {
+                    "portProbeDetails": [
+                        {
+                            "localPortDetails": {
+                                "port": 22,
+                                "portName": "SSH"
+                            },
+                            "remoteIpDetails": {
+                                "ipAddressV4": "00000000000000",
+                                "organization": {
+                                    "asn": "56046",
+                                    "asnOrg": "China Mobile communications corporation",
+                                    "isp": "China Mobile Guangdong",
+                                    "org": "China Mobile"
+                                },
+                                "country": {
+                                    "countryName": "China"
+                                },
+                                "city": {
+                                    "cityName": ""
+                                },
+                                "geoLocation": {
+                                    "lat": 34.7725,
+                                    "lon": 113.7266
+                                }
+                            }
+                        }
+                    ],
+                    "blocked": false
+                }
+            },
+            "resourceRole": "TARGET",
+            "additionalInfo": {
+                "threatName": "Scanner",
+                "threatListName": "ProofPoint"
+            },
+            "eventFirstSeen": "2019-04-12T03:56:06Z",
+            "eventLastSeen": "2019-04-15T11:40:19Z",
+            "archived": false,
+            "count": 244
+        },
+        "severity": 2,
+        "createdAt": "2019-04-12T04:09:46.817Z",
+        "updatedAt": "2019-04-15T11:52:51.956Z",
+        "title": "Unprotected port on EC2 instance i-0c2c5df7066e93cba is being probed.",
+        "description": "EC2 instance has an unprotected port which is being probed by a known malicious host."
+    }
+}

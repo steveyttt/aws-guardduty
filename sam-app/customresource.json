@@ -1,0 +1,22 @@
+{
+  "RequestType": "Create",
+  "ServiceToken": "arn:aws:lambda:ap-southeast-2:00000000:function:guardduty-test",
+  "ResponseURL": "https://cloudformation-custom-resource-response-apsoutheast2.s3-ap-southeast-2.amazonaws.com/arn%3Aaws%3Acloudformation%3Aap-southeast-2%%3Astack/bob1/2617e510-5ac8-11e9-a4ad-0667dfb77996%7CAMIInfo%7Cabdb7322-5bf9-432f-85ee-cb8ddd37144f?AWSAccessKeyId=AKIA6MM33IIZX6M5DHS6&Expires=1554822334&Signature=hg0zpSd3Rru%2Br4sHy3cX%2BucOzlQ%3D",
+  "StackId": "arn:aws:cloudformation:ap-southeast-2:00000000:stack/bob1/2617e510-5ac8-11e9-a4ad-0667dfb77996",
+  "RequestId": "abdb7322-5bf9-432f-85ee-cb8ddd37144f",
+  "LogicalResourceId": "AMIInfo",
+  "ResourceType": "Custom::guardduty",
+  "ResourceProperties": {
+    "ServiceToken": "arn:aws:lambda:ap-southeast-2:00000000:function:guardduty-test",
+    "accounts": [
+      {
+        "accountid" : "00000000000",
+        "Email" : "bob@bob.com.au"
+      },
+      {
+        "accountid" : "0000000000",
+        "Email" : "bob01@bob.com.au"
+      }
+    ]
+  }
+}
