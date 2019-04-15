@@ -1,0 +1,189 @@
+AWSTemplateFormatVersion: 2010-09-09
+Description: Subscribe a lambda fucntion to an events stream and pass all messages to slack
+
+Parameters:
+
+  slackchannel:
+    Description: The name of the slack channel to place the message
+    Type: String
+    Default: ''
+
+  slackurl:
+    Description: The slack webhook URL cofigured for your room
+    Type: String
+    Default: ''
+
+Resources:
+
+  EventRule: 
+    Type: AWS::Events::Rule
+    Properties: 
+      Description: "EventRule to claim all messages for guard duty and pass to lambda"
+      Name: "GuardDuty-Event-Rule"
+      EventPattern: 
+        source: 
+          - "aws.guardduty"
+        detail-type: 
+          - "GuardDuty Finding"
+      State: "ENABLED"
+      Targets: 
+        - 
+          Arn:
+            Fn::GetAtt: 
+            - "slackeventguardduty"
+            - "Arn"
+          Id: "TargetFunctionV1"
+
+  LambdaPermission: 
+    Type: AWS::Lambda::Permission
+    Properties: 
+      FunctionName: 
+        Fn::GetAtt: 
+        - "slackeventguardduty"
+        - "Arn"
+      Action: "lambda:InvokeFunction"
+      Principal: "events.amazonaws.com"
+      SourceArn: 
+        Fn::GetAtt: 
+          - "EventRule"
+          - "Arn"
+
+  Role:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: 'Lambda-CloudWatch-Event-Role-for-GuardDuty'
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+        - Effect: Allow
+          Principal:
+            Service:
+            - lambda.amazonaws.com
+          Action:
+          - sts:AssumeRole
+      Path: "/"
+
+  Policy:
+    Type: AWS::IAM::Policy
+    DependsOn: Role
+    Properties:
+      PolicyName: 'Lambda-CloudWatch-Event-Policy-for-GuardDuty'
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+        - Effect: Allow
+          Action:
+          - logs:CreateLogGroup
+          - logs:CreateLogStream
+          - logs:DescribeLogStreams
+          - logs:GetLogEvents
+          - logs:PutLogEvents
+          - logs:PutRetentionPolicy
+          Resource:
+          - !Sub arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/lambda/slackeventguardduty*
+      Roles: 
+        - !Ref Role
+
+  slackeventguardduty:
+    Type: 'AWS::Lambda::Function'
+    DependsOn: Policy
+    Properties:
+      Description: 'A function to process guard duty messages'
+      FunctionName: 'slackeventguardduty'
+      Handler: 'index.handler'
+      MemorySize: '128'
+      Role: 
+        Fn::GetAtt:
+          - 'Role'
+          - 'Arn'
+      Runtime: 'nodejs8.10'
+      Timeout: '120'
+      Code:
+        ZipFile: >
+          const https = require("https");
+          const url = require("url");
+
+          exports.handler = function(event, context) {
+            console.log("REQUEST RECEIVED:\n" + JSON.stringify(event));
+            sendResponse(event, context);
+          }
+
+          function sendResponse(event, context) {
+
+                var responseBody = JSON.stringify({
+                  channel: process.env.slackchannel,
+                  text: ":fire_engine:" + event["detail-type"] + ":tractor:",
+                  attachments: [{
+                    author_name: "AWS-GuardDuty",
+                    color: "danger",
+                    fields: [{
+                      title: 'AccountId',
+                      value: event.detail.accountId,
+                      short: false,
+                    },{
+                      title: 'type',
+                      value: event.detail.type,
+                      short: true,
+                    }, {
+                      title: 'resourceType',
+                      value: event.detail.resource.resourceType,
+                      short: true,
+                    }],
+                  }]
+                });
+
+            var parsedUrl = url.parse(process.env.slackurl);
+            var options = {
+                hostname: parsedUrl.hostname,
+                port: 443,
+                path: parsedUrl.path,
+                method: "POST",
+                headers: {
+                  'Content-Type': 'application/json',
+                  'Content-Length': Buffer.byteLength(responseBody),
+                }
+            };
+
+            console.log("SENDING RESPONSE...\n");
+
+            var request = https.request(options, function(response) {
+              console.log("STATUS: " + response.statusCode);
+              console.log("HEADERS: " + JSON.stringify(response.headers));
+              context.done();
+          });
+
+            request.on("error", function(error) {
+                console.log("sendResponse Error:" + error);
+                context.done();
+            });
+
+            request.write(responseBody);
+            request.end();
+          } 
+
+Outputs:
+
+  EventRule:
+    Value: !Ref EventRule
+    Export:
+      Name: !Sub "${AWS::StackName}::EventRule"
+
+  LambdaPermission:
+    Value: !Ref LambdaPermission
+    Export:
+      Name: !Sub "${AWS::StackName}::LambdaPermission"
+
+  Role:
+    Value: !Ref Role
+    Export:
+      Name: !Sub "${AWS::StackName}::Role"
+
+  Policy:
+    Value: !Ref Policy
+    Export:
+      Name: !Sub "${AWS::StackName}::Policy"
+
+  slackeventguardduty:
+    Value: !Ref slackeventguardduty
+    Export:
+      Name: !Sub "${AWS::StackName}::slackeventguardduty"

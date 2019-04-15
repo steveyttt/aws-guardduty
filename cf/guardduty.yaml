@@ -1,0 +1,276 @@
+AWSTemplateFormatVersion: 2010-09-09
+Description: Creates an AWS::GuardDuty::Detector resource and optionally an AWS::GuardDuty::Master resource in a set of accounts and regions.
+
+Parameters:
+
+  MasterId:
+    Type: String
+    Default: ''
+    Description: >
+      The Amazon GuardDuty master account ID. If you specify the master account ID, this stack set creates a GuardDuty detector in each specified account and accepts the GuardDuty membership invitation sent to each of the specified accounts by this master account. If this value is specified, before you can
+      create this stack set, all accounts in all regions to which this stack set template is to be applied must already have an invitation from this master GuardDuty account and must NOT have a detector already created.
+
+  MasterAccount:
+    Type: String
+    Default: "True"
+
+  MemberAccount:
+    Type: String
+    Default: "False"
+
+Conditions:
+  
+  master: !Equals [!Ref MasterAccount, "True"]
+  member: !Equals [!Ref MemberAccount, "True"]
+
+Resources:
+
+  Detector:
+    Type: AWS::GuardDuty::Detector
+    Properties:
+      Enable: True
+
+  Master:
+    Type: AWS::GuardDuty::Master
+    Condition: member
+    Properties:
+      DetectorId: !Ref Detector
+      MasterId: !Ref MasterId
+
+  Role:
+    Type: AWS::IAM::Role
+    Condition: master
+    Properties:
+      RoleName: 'GuarddutyInviteMembersExecutionRole'
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+        - Effect: Allow
+          Principal:
+            Service:
+            - lambda.amazonaws.com
+          Action:
+          - sts:AssumeRole
+      Path: "/"
+
+  Policy:
+    Type: AWS::IAM::Policy
+    Condition: master
+    DependsOn: Role
+    Properties:
+      PolicyName: GuarddutyInviteMembersExecutionPolicy
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+        - Effect: Allow
+          Action:
+          - guardduty:*
+          Resource: "*"
+        - Effect: Allow
+          Action: iam:CreateServiceLinkedRole
+          Resource: "*"
+          Condition:
+            StringEquals:
+              "iam:AWSServiceName": guardduty.amazonaws.com
+        - Effect: Allow
+          Action:
+          - "logs:CreateLogGroup"
+          - "logs:CreateLogStream"
+          - "logs:PutLogEvents"
+          - "logs:DescribeLogStreams"
+          Resource:
+          - !Sub arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/lambda/GuarddutyInvitation*
+      Roles: 
+        - !Ref Role
+
+  FunctionGuarddutyInvitation:
+    Type: 'AWS::Lambda::Function'
+    Condition: master
+    DependsOn: Policy
+    Properties:
+      Description: 'A custom resource function to run guardduty invitations'
+      FunctionName: 'GuarddutyInvitation'
+      Handler: 'index.handler'
+      MemorySize: '128'
+      Role: 
+        Fn::GetAtt:
+          - 'Role'
+          - 'Arn'
+      Runtime: 'nodejs8.10'
+      Timeout: '120'
+      Code:
+        ZipFile: >
+          var aws = require("aws-sdk");
+          var guardduty = new aws.GuardDuty();
+
+          exports.handler = (event, context, callback) => {
+
+            guardduty.listDetectors(function(err, data) {
+                if (err) 
+                  console.log(err, err.stack);
+                else
+                  var detectorId = data.DetectorIds[0];
+                  console.log("##### detector ID is " + detectorId + "#####")
+                  createMember(detectorId, event, context)
+            });
+          }
+
+          function sleep(ms) {
+            return new Promise(resolve => setTimeout(resolve, ms));
+          }
+
+          async function createMember(detectorId, event, context) {
+
+            var accountMatrix = event.ResourceProperties.accounts
+            var j = 0
+
+            while (accountMatrix.length >= j){
+              console.log("####Attempting to create member invite for account " + accountMatrix[j].accountid + "####")
+              var params = {
+                AccountDetails: [
+                  {
+                    AccountId: accountMatrix[j].accountid.toString(),
+                    Email: accountMatrix[j].Email.toString()
+                  }, 
+                ],
+                DetectorId: detectorId
+              }; 
+
+                guardduty.createMembers(params, function(err, data) {
+                  if (err) 
+                    console.log(err, err.stack);
+                  else
+                    console.log(data);
+                });
+
+                j++
+
+                if (j == accountMatrix.length) {
+                  await sleep(2000);
+                  inviteMembers(detectorId, event, context)
+                  break;
+                }
+              }
+          }
+
+          async function inviteMembers(detectorId, event, context){
+
+            var accountMatrix = event.ResourceProperties.accounts
+            var j = 0
+
+            while (accountMatrix.length >= j){
+              console.log("####Attempting to send member invite for account " + accountMatrix[j].accountid + "####")
+
+              var params = {
+                  AccountIds: [
+                    accountMatrix[j].accountid.toString(),,
+                    ],
+                  DetectorId: detectorId,
+                  DisableEmailNotification: true
+                  };
+
+                    guardduty.inviteMembers(params, function(err, data) {
+                      if (err) 
+                        console.log(err, err.stack);
+                      else
+                        console.log(data);
+                    });
+
+                    j++
+
+                    if (j == accountMatrix.length) {
+                      await sleep(2000);
+                      sendResponse(event, context)
+                      break;
+                }
+            }
+          }
+
+          function sendResponse(event, context) {
+
+            var responseBody = JSON.stringify({
+                Status: "SUCCESS",
+                Reason: "See the details in CloudWatch Log Stream: " + context.logStreamName,
+                PhysicalResourceId: context.logStreamName,
+                StackId: event.StackId,
+                RequestId: event.RequestId,
+                LogicalResourceId: event.LogicalResourceId,
+                Data: {}
+            });
+
+            var https = require("https");
+            var url = require("url");
+
+            var parsedUrl = url.parse(event.ResponseURL);
+            var options = {
+                hostname: parsedUrl.hostname,
+                port: 443,
+                path: parsedUrl.path,
+                method: "PUT",
+                headers: {
+                    "content-type": "",
+                    "content-length": responseBody.length
+                }
+            };
+
+            console.log("#####SENDING RESPONSE...\n######");
+
+            var request = https.request(options, function(response) {
+                console.log("#####STATUS: " + response.statusCode + "#####");
+                console.log("#####HEADERS: " + JSON.stringify(response.headers + "#####"));
+                context.done();
+            });
+
+            request.on("error", function(error) {
+                console.log("sendResponse Error:" + error);
+                // Tell AWS Lambda that the function execution is done
+                context.done();
+            });
+
+            request.write(responseBody);
+            request.end();
+          }
+
+  GuarddutyInvitation:
+    Type: Custom::guardduty
+    DependsOn: FunctionGuarddutyInvitation
+    Condition: master
+    Properties:
+      ServiceToken:
+        Fn::GetAtt:
+          - 'FunctionGuarddutyInvitation'
+          - 'Arn'
+      accounts:
+      - accountid: '000000000000'
+        Email: rootaccount@rootaccount.com
+      - accountid: '000000000000'
+        Email: rootaccount@rootaccount.com
+      - accountid: '000000000000'
+        Email: rootaccount@rootaccount.com
+
+Outputs:
+
+  Detector:
+    Value: !Ref Detector
+    Export:
+      Name: !Sub "${AWS::StackName}::Detector"
+
+  Master:
+    Value: !Ref Master
+    Export:
+      Name: !Sub "${AWS::StackName}::Master"
+
+  Role:
+    Value: !Ref Role
+    Export:
+      Name: !Sub "${AWS::StackName}::Role"
+
+  Policy:
+    Value: !Ref Policy
+    Export:
+      Name: !Sub "${AWS::StackName}::Policy"
+
+  FunctionGuarddutyInvitation:
+    Value: !Ref FunctionGuarddutyInvitation
+    Export:
+      Name: !Sub "${AWS::StackName}::FunctionGuarddutyInvitation"
